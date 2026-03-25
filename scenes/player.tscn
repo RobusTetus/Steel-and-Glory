@@ -1,0 +1,146 @@
+[gd_scene format=3 uid="uid://c3pq8rft6m21"]
+
+[ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+albedo_color = Color(0.3, 0.4, 0.7, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sword"]
+size = Vector3(1.2, 0.5, 1.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_blade"]
+size = Vector3(0.06, 0.06, 0.9)
+
+[sub_resource type="StandardMaterial3D" id="Mat_blade"]
+albedo_color = Color(0.75, 0.75, 0.78, 1)
+metallic = 0.9
+roughness = 0.25
+
+[sub_resource type="BoxMesh" id="BoxMesh_guard"]
+size = Vector3(0.22, 0.06, 0.06)
+
+[sub_resource type="StandardMaterial3D" id="Mat_guard"]
+albedo_color = Color(0.35, 0.25, 0.1, 1)
+metallic = 0.6
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+size = Vector3(0.05, 0.05, 0.22)
+
+[sub_resource type="StandardMaterial3D" id="Mat_grip"]
+albedo_color = Color(0.25, 0.15, 0.05, 1)
+roughness = 0.8
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kick"]
+size = Vector3(0.8, 0.6, 1.0)
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_1"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/sync = true
+properties/0/watch = false
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/sync = true
+properties/1/watch = false
+properties/2/path = NodePath("CameraPivot:rotation")
+properties/2/spawn = false
+properties/2/sync = true
+properties/2/watch = false
+properties/3/path = NodePath(".:is_blocking")
+properties/3/spawn = false
+properties/3/sync = true
+properties/3/watch = false
+properties/4/path = NodePath(".:health")
+properties/4/spawn = true
+properties/4/sync = true
+properties/4/watch = false
+properties/5/path = NodePath(".:is_dead")
+properties/5/spawn = true
+properties/5/sync = true
+properties/5/watch = false
+properties/6/path = NodePath(".:current_attack")
+properties/6/spawn = false
+properties/6/sync = true
+properties/6/watch = false
+properties/7/path = NodePath(".:_is_staggered")
+properties/7/spawn = false
+properties/7/sync = true
+properties/7/watch = false
+properties/8/path = NodePath(".:_is_dodging")
+properties/8/spawn = false
+properties/8/sync = true
+properties/8/watch = false
+properties/9/path = NodePath(".:team")
+properties/9/spawn = true
+properties/9/sync = false
+properties/9/watch = false
+
+[node name="Player" type="CharacterBody3D"]
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_body")
+surface_material_override/0 = SubResource("Mat_body")
+
+[node name="CameraPivot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+
+[node name="Camera3D" type="Camera3D" parent="CameraPivot"]
+fov = 90.0
+
+[node name="SwordArea" type="Area3D" parent="CameraPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraPivot/SwordArea"]
+shape = SubResource("BoxShape3D_sword")
+
+[node name="SwordPivot" type="Node3D" parent="CameraPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.35, -0.25, -0.5)
+
+[node name="Blade" type="MeshInstance3D" parent="CameraPivot/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.5)
+mesh = SubResource("BoxMesh_blade")
+surface_material_override/0 = SubResource("Mat_blade")
+
+[node name="Guard" type="MeshInstance3D" parent="CameraPivot/SwordPivot"]
+mesh = SubResource("BoxMesh_guard")
+surface_material_override/0 = SubResource("Mat_guard")
+
+[node name="Grip" type="MeshInstance3D" parent="CameraPivot/SwordPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.14)
+mesh = SubResource("BoxMesh_grip")
+surface_material_override/0 = SubResource("Mat_grip")
+
+[node name="KickArea" type="Area3D" parent="CameraPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -0.8)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CameraPivot/KickArea"]
+shape = SubResource("BoxShape3D_kick")
+disabled = true
+
+[node name="NameLabel" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+pixel_size = 0.006
+billboard = 3
+text = "Player"
+font_size = 48
+outline_size = 8
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_1")
+replication_interval = 0.0
+delta_interval = 0.05

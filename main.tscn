@@ -1,3 +1,7 @@
 [gd_scene format=3 uid="uid://w3usm2050hoe"]
 
-[node name="Node3D" type="Node3D" unique_id=208641673]
+[ext_resource type="PackedScene" path="res://scenes/main_menu.tscn" id="1_menu"]
+
+[node name="Root" type="Node"]
+
+[node name="MainMenu" parent="." instance=ExtResource("1_menu")]

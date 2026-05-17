@@ -109,7 +109,6 @@ var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 @onready var name_label:   Label3D         = $NameLabel
 @onready var sync_node:    MultiplayerSynchronizer = $Sync
 
-signal player_killed(victim_id: int, killer_id: int)
 signal hit_received(attacker_global_pos: Vector3)
 signal attack_started(attack_type: int)
 signal attack_landed(damage: int, is_parry: bool)
@@ -176,7 +175,7 @@ func _physics_process(delta: float) -> void:
 
 	if not _is_local_player() or is_dead:
 		return
-	
+
 	# Update timers
 	_update_timers(delta)
 
@@ -221,7 +220,7 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, spd)
 
 	move_and_slide()
-	
+
 	# Footstep sounds
 	if dir and is_on_floor():
 		var interval := SPRINT_FOOTSTEP_INTERVAL if is_sprinting else FOOTSTEP_INTERVAL
@@ -258,24 +257,24 @@ func _update_timers(delta: float) -> void:
 		_combo_timer -= delta
 		if _combo_timer <= 0:
 			_combo_count = 0
-	
+
 	if _dodge_cooldown > 0:
 		_dodge_cooldown -= delta
 
 
 func _handle_blocking(delta: float) -> void:
 	var wants_block := Input.is_action_pressed("block") and stamina > 0.0
-	
+
 	# Parry window - activated when first pressing block
 	if Input.is_action_just_pressed("block") and stamina > 0.0:
 		_parry_active = true
 		_parry_timer = PARRY_WINDOW
-	
+
 	if _parry_active:
 		_parry_timer -= delta
 		if _parry_timer <= 0:
 			_parry_active = false
-	
+
 	is_blocking = wants_block
 	if is_blocking:
 		stamina = max(0.0, stamina - STAMINA_BLOCK_DRAIN * delta)
@@ -292,20 +291,20 @@ func _handle_combat_input() -> void:
 
 	# Directional attacks based on mouse movement + attack button
 	# Or use dedicated buttons
-	
+
 	# Light attack (slash based on horizontal mouse movement, or default slash right)
 	if Input.is_action_just_pressed("attack") and stamina >= STAMINA_ATTACK_COST:
 		var attack_type := _get_directional_attack()
 		_perform_attack(attack_type)
-	
+
 	# Heavy attack
 	elif Input.is_action_just_pressed("heavy_attack") and stamina >= STAMINA_HEAVY_COST:
 		_perform_attack(AttackType.HEAVY)
-	
+
 	# Stab attack (alternate attack)
 	elif Input.is_action_just_pressed("stab") and stamina >= STAMINA_STAB_COST:
 		_perform_attack(AttackType.STAB)
-	
+
 	# Overhead attack
 	elif Input.is_action_just_pressed("overhead") and stamina >= STAMINA_OVERHEAD_COST:
 		_perform_attack(AttackType.OVERHEAD)
@@ -333,7 +332,7 @@ func _get_directional_attack() -> int:
 func _perform_attack(attack_type: int) -> void:
 	var cost: float
 	var cooldown: float
-	
+
 	match attack_type:
 		AttackType.SLASH_LEFT, AttackType.SLASH_RIGHT:
 			cost = STAMINA_ATTACK_COST
@@ -350,11 +349,11 @@ func _perform_attack(attack_type: int) -> void:
 		_:
 			cost = STAMINA_ATTACK_COST
 			cooldown = ATTACK_CD
-	
+
 	atk_timer = cooldown
 	stamina -= cost
 	_can_feint = true
-	
+
 	# Check for combo
 	if _combo_timer > 0 and _last_attack_type != AttackType.NONE:
 		_combo_count += 1
@@ -364,17 +363,17 @@ func _perform_attack(attack_type: int) -> void:
 			VFXManager.create_combo_effect(global_position, _combo_count)
 	else:
 		_combo_count = 1
-	
+
 	_combo_timer = COMBO_WINDOW
 	_last_attack_type = attack_type
 	current_attack = attack_type
-	
+
 	attack_started.emit(attack_type)
 	if NetworkManager.is_bot_practice_mode:
 		_do_directional_attack(attack_type)
 	else:
 		_do_directional_attack.rpc(attack_type)
-	
+
 	# Play swing sound locally
 	if _is_local_player():
 		AudioManager.play_swing(attack_type == AttackType.HEAVY)
@@ -383,7 +382,7 @@ func _perform_attack(attack_type: int) -> void:
 func _cancel_attack() -> void:
 	if not _can_feint:
 		return
-	
+
 	stamina -= STAMINA_FEINT_COST
 	_swing_active = false
 	_swing_progress = 0.0
@@ -402,7 +401,7 @@ func _perform_dodge(direction: Vector3) -> void:
 	dodge_performed.emit()
 	if not NetworkManager.is_bot_practice_mode:
 		_broadcast_dodge.rpc()
-	
+
 	# Play dodge sound locally
 	if _is_local_player():
 		AudioManager.play_dodge()
@@ -416,7 +415,7 @@ func apply_stagger() -> void:
 		_swing_active = false
 		_swing_progress = 0.0
 		sword_pivot.rotation = Vector3.ZERO
-	
+
 	# Play stagger sound and effect
 	if _is_local_player():
 		AudioManager.play_stagger()
@@ -428,11 +427,11 @@ func apply_stagger() -> void:
 func _update_swing(delta: float) -> void:
 	if _swing_active:
 		_swing_progress += delta * SWING_SPEED
-		
+
 		# Disable feint after the feint window
 		if _swing_progress > FEINT_WINDOW * SWING_SPEED:
 			_can_feint = false
-		
+
 		if _swing_progress >= 1.0:
 			_swing_active = false
 			_swing_progress = 0.0
@@ -445,7 +444,7 @@ func _update_swing(delta: float) -> void:
 func _animate_swing() -> void:
 	var angle: float
 	var progress := _swing_progress
-	
+
 	match current_attack:
 		AttackType.SLASH_RIGHT:
 			angle = sin(progress * PI) * 1.2
@@ -475,18 +474,18 @@ func _animate_swing() -> void:
 func _do_directional_attack(attack_type: int) -> void:
 	if is_dead:
 		return
-	
+
 	_swing_active = true
 	_swing_progress = 0.0
 	current_attack = attack_type
-	
+
 	# Reset sword pivot position for stab
 	if attack_type != AttackType.STAB:
 		sword_pivot.position = Vector3(0.35, -0.25, -0.5)
-	
+
 	var dmg := _get_damage_for_attack(attack_type)
 	var hit_someone := false
-	
+
 	for body in sword_area.get_overlapping_bodies():
 		if body == self or not body.has_method("receive_hit"):
 			continue
@@ -500,7 +499,7 @@ func _do_directional_attack(attack_type: int) -> void:
 		else:
 			target.receive_hit.rpc_id(target.player_peer_id, dmg, player_peer_id, attack_type)
 		hit_someone = true
-	
+
 	if hit_someone:
 		attack_landed.emit(dmg, false)
 
@@ -574,11 +573,11 @@ func _broadcast_dodge() -> void:
 func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SLASH_RIGHT) -> void:
 	if is_dead or _is_dodging:
 		return
-	
+
 	var final_damage := amount
 	var was_parried := false
 	var is_local := _is_local_player()
-	
+
 	# Check for perfect parry
 	if _parry_active and is_blocking:
 		final_damage = int(amount * PARRY_MULT)
@@ -586,12 +585,12 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 		_parry_active = false
 		_just_parried = true
 		parry_success.emit()
-		
+
 		# Play parry sound and effect
 		if is_local:
 			AudioManager.play_block(true)
 		VFXManager.create_parry_effect(global_position + Vector3(0, 1.5, 0))
-		
+
 		# Stagger the attacker on parry
 		var attacker := get_parent().get_node_or_null(str(attacker_id))
 		if attacker and attacker.has_method("apply_stagger"):
@@ -617,11 +616,11 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 		# Apply stagger on heavy hits when not blocking
 		if attack_type in [AttackType.HEAVY, AttackType.OVERHEAD]:
 			apply_stagger()
-	
+
 	health = max(0, health - final_damage)
 	_last_damage_dealt = final_damage
 	_last_hit_was_parry = was_parried
-	
+
 	if NetworkManager.is_bot_practice_mode:
 		_broadcast_health(health)
 		_notify_hit(attacker_id)
@@ -638,18 +637,18 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 func receive_kick(_amount: int, attacker_id: int) -> void:
 	if is_dead or _is_dodging:
 		return
-	
+
 	# Play kick impact sound
 	if _is_local_player():
 		AudioManager.play_kick()
-	
+
 	if is_blocking:
 		# Kick breaks blocking and causes stagger
 		is_blocking = false
 		stamina = max(0.0, stamina - 30.0)
 		apply_stagger()
 	health = max(0, health - _amount)
-	
+
 	if NetworkManager.is_bot_practice_mode:
 		_broadcast_health(health)
 		_notify_hit(attacker_id)
@@ -686,11 +685,11 @@ func _broadcast_death(killer_id: int) -> void:
 	is_dead = true
 	deaths += 1
 	visible = false
-	
+
 	# Play death sound and effect
 	AudioManager.play_death()
 	VFXManager.create_death_effect(global_position + Vector3(0, 1.0, 0))
-	
+
 	if _is_local_player():
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	# Notify game manager via group instead of fragile parent chain.

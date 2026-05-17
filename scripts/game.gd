@@ -46,7 +46,7 @@ func _ready() -> void:
 
 	# Check if this is a bot practice mode (offline)
 	var is_offline := NetworkManager.is_bot_practice_mode
-	
+
 	if is_offline:
 		# Spawn local player
 		_spawn_local_player()
@@ -72,10 +72,10 @@ func _process(delta: float) -> void:
 		if _match_time <= 0:
 			_end_match()
 		return
-	
+
 	if not multiplayer.is_server() or not _match_active:
 		return
-	
+
 	_match_time -= delta
 	if _match_time <= 0:
 		_end_match()
@@ -90,7 +90,7 @@ func _spawn_local_player() -> void:
 	var pos := SPAWN_POSITIONS[_spawn_idx % SPAWN_POSITIONS.size()]
 	_spawn_idx += 1
 	player.global_position = pos
-	
+
 	# Setup camera for local player
 	player.set_multiplayer_authority(1)
 
@@ -104,34 +104,34 @@ func _spawn_bots(count: int, difficulty: int = 1) -> void:
 func _spawn_single_bot(difficulty: int = 1) -> void:
 	var bot_id := _next_bot_id
 	_next_bot_id -= 1
-	
+
 	var player := PLAYER_SCENE.instantiate()
 	player.name = str(bot_id)
 	player.player_peer_id = bot_id
-	
+
 	# Give bot a random name
 	var bot_name := BOT_NAMES[randi() % BOT_NAMES.size()]
 	player.player_name = bot_name
-	
+
 	# Register bot in NetworkManager for scoreboard
 	NetworkManager.players[bot_id] = {name = bot_name}
-	
+
 	players_node.add_child(player, true)
 	var pos := SPAWN_POSITIONS[_spawn_idx % SPAWN_POSITIONS.size()]
 	_spawn_idx += 1
 	player.global_position = pos
-	
+
 	# Assign team in TDM mode
 	if game_mode == 1:
 		player.team = 1 if _spawn_idx % 2 == 0 else 2
-	
+
 	# Create and attach AI controller
 	var ai := BOT_AI_SCRIPT.new()
 	ai.name = "BotAI"
 	player.add_child(ai)
 	ai.initialize(player, difficulty)
 	_bot_ais.append(ai)
-	
+
 	# Make bot visible to player (not controlled by network)
 	player.body_mesh.visible = true
 	player.name_label.visible = true
@@ -144,7 +144,7 @@ func _spawn_player(peer_id: int) -> void:
 	var pos := SPAWN_POSITIONS[_spawn_idx % SPAWN_POSITIONS.size()]
 	_spawn_idx += 1
 	player.global_position = pos
-	
+
 	# Assign team in TDM mode
 	if game_mode == 1:
 		player.team = 1 if _spawn_idx % 2 == 0 else 2
@@ -162,30 +162,28 @@ func _on_player_left(peer_id: int) -> void:
 
 
 func on_player_killed(victim_id: int, killer_id: int) -> void:
+	var victim_name: String = NetworkManager.players.get(victim_id, {}).get("name", "Unknown")
+	var killer_name: String = NetworkManager.players.get(killer_id, {}).get("name", "Unknown")
+	var killer_node := players_node.get_node_or_null(str(killer_id))
+
 	# Handle offline bot practice mode
 	if NetworkManager.is_bot_practice_mode:
-		var victim_name: String = NetworkManager.players.get(victim_id, {}).get("name", "Unknown")
-		var killer_name: String = NetworkManager.players.get(killer_id, {}).get("name", "Unknown")
 		# Handle local player name
 		if victim_id == 1:
 			victim_name = NetworkManager.local_player_name
 		if killer_id == 1:
 			killer_name = NetworkManager.local_player_name
 		_show_kill_feed_local(killer_name, victim_name)
-		var killer_node := players_node.get_node_or_null(str(killer_id))
 		if killer_node:
 			killer_node.kills += 1
 			if game_mode == 1 and killer_node.team > 0:
 				team_scores[killer_node.team] += 1
 		_do_respawn_offline(victim_id)
 		return
-	
+
 	if not multiplayer.is_server():
 		return
-	var victim_name: String = NetworkManager.players.get(victim_id, {}).get("name", "Unknown")
-	var killer_name: String = NetworkManager.players.get(killer_id, {}).get("name", "Unknown")
 	_show_kill_feed.rpc(killer_name, victim_name)
-	var killer_node := players_node.get_node_or_null(str(killer_id))
 	if killer_node:
 		killer_node.kills += 1
 		# Update team score in TDM

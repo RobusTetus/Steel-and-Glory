@@ -83,6 +83,22 @@ properties/9/path = NodePath(".:team")
 properties/9/spawn = true
 properties/9/sync = false
 properties/9/watch = false
+properties/10/path = NodePath(".:stamina")
+properties/10/spawn = true
+properties/10/sync = true
+properties/10/watch = false
+properties/11/path = NodePath(".:_parry_active")
+properties/11/spawn = false
+properties/11/sync = true
+properties/11/watch = false
+properties/12/path = NodePath(".:player_peer_id")
+properties/12/spawn = true
+properties/12/sync = false
+properties/12/watch = false
+properties/13/path = NodePath(".:player_name")
+properties/13/spawn = true
+properties/13/sync = false
+properties/13/watch = false
 
 [node name="Player" type="CharacterBody3D"]
 script = ExtResource("1_player")

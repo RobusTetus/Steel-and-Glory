@@ -108,5 +108,7 @@ func _send_my_info(player_name: String) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _register_player(peer_id: int, player_name: String) -> void:
+	var was_known := players.has(peer_id)
 	players[peer_id] = {name = player_name}
-	player_joined.emit(peer_id)
+	if not was_known:
+		player_joined.emit(peer_id)

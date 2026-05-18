@@ -118,6 +118,12 @@ signal combo_achieved(combo_count: int)
 
 
 func _ready() -> void:
+	_setup_network_identity()
+	add_to_group("players")
+	call_deferred("_setup_network_identity")
+
+
+func _setup_network_identity() -> void:
 	if name.is_valid_int():
 		player_peer_id = int(name)
 
@@ -135,8 +141,6 @@ func _ready() -> void:
 		set_multiplayer_authority(player_peer_id)
 		sync_node.set_multiplayer_authority(player_peer_id)
 
-	add_to_group("players")
-
 	# Setup camera and visibility for the local player
 	var is_local_player := player_peer_id == 1 if NetworkManager.is_bot_practice_mode else is_multiplayer_authority()
 	if is_local_player:
@@ -144,6 +148,9 @@ func _ready() -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		body_mesh.visible = false
 		name_label.visible = false
+	else:
+		body_mesh.visible = true
+		name_label.visible = true
 
 
 # ---- input (authority only) ----
@@ -152,6 +159,21 @@ func _is_local_player() -> bool:
 	if NetworkManager.is_bot_practice_mode:
 		return player_peer_id == 1
 	return is_multiplayer_authority()
+
+
+func _is_server_authorized_rpc() -> bool:
+	if NetworkManager.is_bot_practice_mode:
+		return true
+	var sender := multiplayer.get_remote_sender_id()
+	if multiplayer.is_server():
+		return sender == 0
+	return sender == 1
+
+
+func _is_server_damage_context() -> bool:
+	if NetworkManager.is_bot_practice_mode:
+		return true
+	return multiplayer.is_server()
 
 
 func _input(event: InputEvent) -> void:
@@ -422,6 +444,14 @@ func apply_stagger() -> void:
 	VFXManager.create_stagger_effect(global_position)
 
 
+func _apply_stagger_authoritative() -> void:
+	if NetworkManager.is_bot_practice_mode:
+		apply_stagger()
+	elif multiplayer.is_server():
+		apply_stagger()
+		apply_stagger_rpc.rpc()
+
+
 # ---- sword swing animation ----
 
 func _update_swing(delta: float) -> void:
@@ -483,6 +513,9 @@ func _do_directional_attack(attack_type: int) -> void:
 	if attack_type != AttackType.STAB:
 		sword_pivot.position = Vector3(0.35, -0.25, -0.5)
 
+	if not NetworkManager.is_bot_practice_mode and not multiplayer.is_server():
+		return
+
 	var dmg := _get_damage_for_attack(attack_type)
 	var hit_someone := false
 
@@ -497,7 +530,7 @@ func _do_directional_attack(attack_type: int) -> void:
 		if NetworkManager.is_bot_practice_mode:
 			target.receive_hit(dmg, player_peer_id, attack_type)
 		else:
-			target.receive_hit.rpc_id(target.player_peer_id, dmg, player_peer_id, attack_type)
+			target.receive_hit(dmg, player_peer_id, attack_type)
 		hit_someone = true
 
 	if hit_someone:
@@ -530,6 +563,9 @@ func _do_attack(heavy: bool) -> void:
 	_swing_progress = 0.0
 	_swing_is_heavy = heavy
 	current_attack = AttackType.HEAVY if heavy else AttackType.SLASH_RIGHT
+	if not NetworkManager.is_bot_practice_mode and not multiplayer.is_server():
+		return
+
 	var dmg := HEAVY_ATTACK_DMG if heavy else ATTACK_DMG
 	for body in sword_area.get_overlapping_bodies():
 		if body == self or not body.has_method("receive_hit"):
@@ -539,7 +575,7 @@ func _do_attack(heavy: bool) -> void:
 		if NetworkManager.is_bot_practice_mode:
 			target.receive_hit(dmg, player_peer_id, current_attack)
 		else:
-			target.receive_hit.rpc_id(target.player_peer_id, dmg, player_peer_id, current_attack)
+			target.receive_hit(dmg, player_peer_id, current_attack)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -548,6 +584,10 @@ func _do_kick() -> void:
 		return
 	kick_col.disabled = false
 	await get_tree().create_timer(0.15).timeout
+	if not NetworkManager.is_bot_practice_mode and not multiplayer.is_server():
+		kick_col.disabled = true
+		return
+
 	for body in kick_area.get_overlapping_bodies():
 		if body == self or not body.has_method("receive_kick"):
 			continue
@@ -559,7 +599,7 @@ func _do_kick() -> void:
 		if NetworkManager.is_bot_practice_mode:
 			target.receive_kick(KICK_DMG, player_peer_id)
 		else:
-			target.receive_kick.rpc_id(target.player_peer_id, KICK_DMG, player_peer_id)
+			target.receive_kick(KICK_DMG, player_peer_id)
 	kick_col.disabled = true
 
 
@@ -569,8 +609,9 @@ func _broadcast_dodge() -> void:
 	pass  # Could add dodge animation/effects here
 
 
-@rpc("any_peer", "reliable")
 func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SLASH_RIGHT) -> void:
+	if not _is_server_damage_context():
+		return
 	if is_dead or _is_dodging:
 		return
 
@@ -593,11 +634,12 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 
 		# Stagger the attacker on parry
 		var attacker := get_parent().get_node_or_null(str(attacker_id))
-		if attacker and attacker.has_method("apply_stagger"):
+		if attacker and attacker.has_method("apply_stagger_rpc"):
 			if NetworkManager.is_bot_practice_mode:
 				attacker.apply_stagger()
 			else:
-				attacker.apply_stagger.rpc_id(attacker_id)
+				attacker.apply_stagger()
+				attacker.apply_stagger_rpc.rpc()
 	elif is_blocking:
 		final_damage = int(amount * BLOCK_MULT)
 		# Play block sound and effect
@@ -606,7 +648,7 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 		VFXManager.create_block_effect(global_position + Vector3(0, 1.5, 0))
 		# Heavy attacks and overheads can stagger through block
 		if attack_type in [AttackType.HEAVY, AttackType.OVERHEAD] and stamina < 20:
-			apply_stagger()
+			_apply_stagger_authoritative()
 			final_damage = int(amount * 0.5)
 	else:
 		# Play hit sound and effect
@@ -615,7 +657,7 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 		VFXManager.create_hit_effect(global_position + Vector3(0, 1.2, 0))
 		# Apply stagger on heavy hits when not blocking
 		if attack_type in [AttackType.HEAVY, AttackType.OVERHEAD]:
-			apply_stagger()
+			_apply_stagger_authoritative()
 
 	health = max(0, health - final_damage)
 	_last_damage_dealt = final_damage
@@ -630,11 +672,13 @@ func receive_hit(amount: int, attacker_id: int, attack_type: int = AttackType.SL
 		_broadcast_health.rpc(health)
 		_notify_hit.rpc_id(player_peer_id, attacker_id)
 		if health == 0:
+			_apply_death(attacker_id)
 			_broadcast_death.rpc(attacker_id)
 
 
-@rpc("any_peer", "reliable")
 func receive_kick(_amount: int, attacker_id: int) -> void:
+	if not _is_server_damage_context():
+		return
 	if is_dead or _is_dodging:
 		return
 
@@ -646,7 +690,7 @@ func receive_kick(_amount: int, attacker_id: int) -> void:
 		# Kick breaks blocking and causes stagger
 		is_blocking = false
 		stamina = max(0.0, stamina - 30.0)
-		apply_stagger()
+		_apply_stagger_authoritative()
 	health = max(0, health - _amount)
 
 	if NetworkManager.is_bot_practice_mode:
@@ -658,11 +702,14 @@ func receive_kick(_amount: int, attacker_id: int) -> void:
 		_broadcast_health.rpc(health)
 		_notify_hit.rpc_id(player_peer_id, attacker_id)
 		if health == 0:
+			_apply_death(attacker_id)
 			_broadcast_death.rpc(attacker_id)
 
 
-@rpc("any_peer", "call_local", "reliable")
+@rpc("any_peer", "reliable")
 func apply_stagger_rpc() -> void:
+	if not _is_server_authorized_rpc():
+		return
 	apply_stagger()
 
 
@@ -673,13 +720,14 @@ func _notify_hit(attacker_id: int) -> void:
 		hit_received.emit(attacker.global_position)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "reliable")
 func _broadcast_health(new_health: int) -> void:
+	if not _is_server_authorized_rpc():
+		return
 	health = new_health
 
 
-@rpc("authority", "call_local", "reliable")
-func _broadcast_death(killer_id: int) -> void:
+func _apply_death(killer_id: int) -> void:
 	if is_dead:
 		return
 	is_dead = true
@@ -698,8 +746,17 @@ func _broadcast_death(killer_id: int) -> void:
 			node.on_player_killed(player_peer_id, killer_id)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "reliable")
+func _broadcast_death(killer_id: int) -> void:
+	if not _is_server_authorized_rpc():
+		return
+	_apply_death(killer_id)
+
+
+@rpc("any_peer", "reliable")
 func do_respawn(pos: Vector3) -> void:
+	if not _is_server_authorized_rpc():
+		return
 	health = MAX_HEALTH
 	stamina = MAX_STAMINA
 	is_dead = false

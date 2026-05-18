@@ -299,7 +299,7 @@ shape = SubResource("Shape_barrier")
 
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
 spawn_path = NodePath("Players")
-_spawnable_scenes = PackedStringArray("res://scenes/player.tscn")
+_spawnable_scenes = PackedStringArray()
 
 ; ── HUD ────────────────────────────────────────────────────────────────────────
 

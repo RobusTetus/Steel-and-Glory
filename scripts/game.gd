@@ -39,6 +39,7 @@ var team_scores: Dictionary = {1: 0, 2: 0}
 var _bot_count: int = 0
 var _bot_ais: Array = []
 var _next_bot_id: int = -1000  # Negative IDs for bots to avoid conflicts
+var _spawn_requested_peers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -53,14 +54,20 @@ func _ready() -> void:
 		# Spawn bots
 		_spawn_bots(NetworkManager.bot_count, NetworkManager.bot_difficulty)
 	else:
+		if not NetworkManager.player_joined.is_connected(_on_player_joined):
+			NetworkManager.player_joined.connect(_on_player_joined)
+		if not NetworkManager.player_left.is_connected(_on_player_left):
+			NetworkManager.player_left.connect(_on_player_left)
+
 		if not multiplayer.is_server():
+			if not NetworkManager.players.has(1):
+				NetworkManager.players[1] = {name = "Host"}
+			for pid in NetworkManager.players:
+				_spawn_player(pid)
+			_request_spawn_from_server.rpc_id(1)
 			return
 
-		for pid in NetworkManager.players:
-			_spawn_player(pid)
-
-		NetworkManager.player_joined.connect(_on_player_joined)
-		NetworkManager.player_left.connect(_on_player_left)
+		_spawn_player(1)
 
 
 func _process(delta: float) -> void:
@@ -138,8 +145,13 @@ func _spawn_single_bot(difficulty: int = 1) -> void:
 
 
 func _spawn_player(peer_id: int) -> void:
+	if players_node.get_node_or_null(str(peer_id)) != null:
+		return
+
 	var player := PLAYER_SCENE.instantiate()
 	player.name = str(peer_id)
+	player.player_peer_id = peer_id
+	player.player_name = NetworkManager.players.get(peer_id, {}).get("name", "Warrior")
 	players_node.add_child(player, true)
 	var pos := SPAWN_POSITIONS[_spawn_idx % SPAWN_POSITIONS.size()]
 	_spawn_idx += 1
@@ -149,16 +161,74 @@ func _spawn_player(peer_id: int) -> void:
 	if game_mode == 1:
 		player.team = 1 if _spawn_idx % 2 == 0 else 2
 
+	if multiplayer.is_server() and not NetworkManager.is_bot_practice_mode:
+		_spawn_player_remote.rpc(peer_id, player.player_name, player.team, player.global_position)
+
 
 func _on_player_joined(peer_id: int) -> void:
-	if multiplayer.is_server():
+	if not multiplayer.is_server():
+		_spawn_player(peer_id)
+		return
+
+	if (
+		_spawn_requested_peers.has(peer_id)
+		and players_node.get_node_or_null(str(peer_id)) == null
+	):
 		_spawn_player(peer_id)
 
 
 func _on_player_left(peer_id: int) -> void:
+	_spawn_requested_peers.erase(peer_id)
 	var node := players_node.get_node_or_null(str(peer_id))
 	if node:
 		node.queue_free()
+
+
+@rpc("any_peer", "reliable")
+func _request_spawn_from_server() -> void:
+	if not multiplayer.is_server():
+		return
+
+	var peer_id := multiplayer.get_remote_sender_id()
+	if peer_id <= 1:
+		return
+
+	_spawn_requested_peers[peer_id] = true
+	if NetworkManager.players.has(peer_id):
+		_spawn_player(peer_id)
+	_send_existing_players(peer_id)
+
+
+func _send_existing_players(peer_id: int) -> void:
+	for child in players_node.get_children():
+		_spawn_player_remote.rpc_id(
+			peer_id,
+			child.player_peer_id,
+			child.player_name,
+			child.team,
+			child.global_position
+		)
+
+
+@rpc("authority", "reliable")
+func _spawn_player_remote(peer_id: int, player_name: String, team: int, pos: Vector3) -> void:
+	if multiplayer.is_server() or NetworkManager.is_bot_practice_mode:
+		return
+
+	NetworkManager.players[peer_id] = {name = player_name}
+
+	var player = players_node.get_node_or_null(str(peer_id))
+	if player == null:
+		player = PLAYER_SCENE.instantiate()
+		player.name = str(peer_id)
+		players_node.add_child(player, true)
+
+	player.player_peer_id = peer_id
+	player.player_name = player_name
+	player.team = team
+	player.global_position = pos
+	if player.has_method("_setup_network_identity"):
+		player._setup_network_identity()
 
 
 func on_player_killed(victim_id: int, killer_id: int) -> void:
@@ -198,6 +268,7 @@ func _do_respawn(victim_id: int) -> void:
 	if player == null:
 		return
 	var pos := SPAWN_POSITIONS[randi() % SPAWN_POSITIONS.size()]
+	player.do_respawn(pos)
 	player.do_respawn.rpc(pos)
 
 
